@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TACTICAL-PRO - Centre d'Instruction Militaire</title>
+    <!-- Leaflet CSS pour la cartographie -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            --bg-dark: #0f1410;
+            --panel-bg: #18221a;
+            --accent-green: #2e7d32;
+            --accent-gold: #c69214;
+            --text-light: #e0e0e0;
+            --danger-red: #c62828;
+        }
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-light);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        header {
+            background: #111a13;
+            border-bottom: 2px solid var(--accent-green);
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        h1 { margin: 0; font-size: 1.2rem; color: var(--accent-gold); letter-spacing: 1px; }
+        .container { padding: 15px; max-width: 800px; margin: auto; }
+        .card {
+            background: var(--panel-bg);
+            border: 1px solid #28382b;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        button, .btn {
+            background: var(--accent-green);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        button:hover { background: #388e3c; }
+        .btn-danger { background: var(--danger-red); }
+        input, textarea, select {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0 15px 0;
+            background: #0b100c;
+            border: 1px solid #334d37;
+            color: white;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        #map { height: 300px; width: 100%; border-radius: 6px; margin-top: 10px; }
+        .tab-bar { display: flex; gap: 5px; margin-bottom: 15px; overflow-x: auto; }
+        .tab-btn { background: #202e22; flex: 1; text-align: center; white-space: nowrap; padding: 10px; border: none; color: white; border-radius: 4px; cursor: pointer;}
+        .tab-btn.active { background: var(--accent-green); }
+        .hidden { display: none; }
+        .badge { background: var(--accent-gold); color: #000; padding: 3px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>🛡️ TACTICAL-PRO</h1>
+    <div id="header-user-info" class="hidden">
+        <span id="nav-callsign" class="badge">--</span>
+        <button onclick="logoutUser()" style="padding: 5px 10px; font-size: 0.75rem; background: var(--danger-red); margin-left: 10px;">Quitter</button>
+    </div>
+</header>
+
+<div class="container">
+
+    <!-- ÉCRAN DE CONNEXION / INSCRIPTION MILITAIRE -->
+    <div id="auth-screen" class="card">
+        <h3>🪖 Identification du Personnel</h3>
+        <p>Enregistrez vos informations pour accéder aux cours et progresser dans les niveaux tactiques.</p>
+        <label>Grade :</label>
+        <select id="user-grade">
+            <option value="Soldat / Soldat de 1ère classe">Soldat / Soldat de 1ère classe</option>
+            <option value="Caporal / Caporal-chef">Caporal / Caporal-chef</option>
+            <option value="Sergent / Sergent-chef">Sergent / Sergent-chef</option>
+            <option value="Adjudant / Adjudant-chef">Adjudant / Adjudant-chef</option>
+            <option value="Officier subalterne / Supérieur">Officier</option>
+        </select>
+        <label>Nom :</label>
+        <input type="text" id="user-lastname" placeholder="Ex: DIOP">
+        <label>Prénom :</label>
+        <input type="text" id="user-firstname" placeholder="Ex: Abdoul Khadre">
+        <label>Nom de guerre / Indicatif :</label>
+        <input type="text" id="user-callsign" placeholder="Ex: COBRA 1-4 ou PHANTOM">
+        <label>Numéro de téléphone ou Email :</label>
+        <input type="text" id="user-contact" placeholder="Ex: +221 77 ... ou email@mil.sn">
+        <button onclick="registerUser()" style="width: 100%;">Valider l'Identifiant & Entrer</button>
+    </div>
+
+    <!-- APPLICATION PRINCIPALE (Masquée tant que non connecté) -->
+    <div id="main-app" class="hidden">
+        
+        <!-- Carte de profil active -->
+        <div class="card" style="display: flex; justify-content: space-between; align-items: center; background: #131c15;">
+            <div>
+                <small style="color: var(--accent-gold);" id="display-grade">Grade & Nom</small>
+                <h3 style="margin: 2px 0;" id="display-name">Nom Prénom</h3>
+                <p style="margin: 0; font-size: 0.85rem; color: #aaa;">Indicatif : <span id="display-callsign" style="color: white; font-weight: bold;">--</span></p>
+            </div>
+            <div style="text-align: right;">
+                <span class="badge" id="display-level">Niveau 1 : Recrue</span>
+                <p style="margin: 5px 0 0 0; font-size: 0.8rem;">Score : <span id="display-score">0</span> pts</p>
+            </div>
+        </div>
+
+        <!-- Barre de navigation -->
+        <div class="tab-bar">
+            <button class="tab-btn active" onclick="switchTab('cours')">Cours</button>
+            <button class="tab-btn" onclick="switchTab('topo')">Topo & GPS</button>
+            <button class="tab-btn" onclick="switchTab('qcm')">QCM & Niveaux</button>
+            <button class="tab-btn" onclick="switchTab('admin')">Admin</button>
+        </div>
+
+        <!-- Section 1 : Cours -->
+        <div id="tab-cours" class="tab-content">
+            <div class="card">
+                <h3>📚 Modules d'Instruction & Doctrine</h3>
+                <div id="courses-list">Chargement...</div>
+            </div>
+        </div>
+
+        <!-- Section 2 : Topographie & GPS -->
+        <div id="tab-topo" class="tab-content hidden">
+            <div class="card">
+                <h3>📍 Localisation Tactique (Offline Ready)</h3>
+                <p><strong>Position GPS :</strong> <span id="gps-coords">Recherche satellite...</span></p>
+                <div id="map"></div>
+            </div>
+            <div class="card">
+                <h3>🧭 Calculateur Topographique</h3>
+                <label>Gisement Topographique (GT) :</label>
+                <input type="number" id="val-gt" placeholder="Ex: 150.5">
+                <label>Déclinaison Magnétique (DMR) :</label>
+                <input type="number" id="val-dmr" placeholder="Ex: 2.5">
+                <button onclick="calculateAzimut()">Calculer l'Azimut Magnétique (AZM)</button>
+                <p id="calc-result" style="margin-top: 10px; font-weight: bold; color: var(--accent-gold);"></p>
+            </div>
+        </div>
+
+        <!-- Section 3 : QCM & Progression par Niveaux -->
+        <div id="tab-qcm" class="tab-content hidden">
+            <div class="card">
+                <h3>🎯 Évaluation & Niveaux Tactiques</h3>
+                <p>Répondez correctement pour gagner des points et débloquer les niveaux supérieurs (Niveau 2 : Chef d'équipe, Niveau 3 : Expert Tactique).</p>
+                <div id="qcm-container">
+                    <!-- Généré dynamiquement -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 4 : Administration -->
+        <div id="tab-admin" class="tab-content hidden">
+            <div class="card" style="border-color: var(--accent-gold);">
+                <h3 style="color: var(--accent-gold);">⚙️ Gestion des Cours & Questions</h3>
+                
+                <h4>Ajouter un Cours</h4>
+                <input type="text" id="new-course-title" placeholder="Titre du cours">
+                <select id="new-course-module">
+                    <option value="RDG">1. Règlement & Discipline (RDG)</option>
+                    <option value="TOPO">2. Topographie</option>
+                    <option value="ARMES">3. Armement & ISTC</option>
+                    <option value="COMBAT">4. Combat & Tactique</option>
+                </select>
+                <textarea id="new-course-content" placeholder="Contenu et références doctrinales..." rows="3"></textarea>
+                <button onclick="addCourse()">Enregistrer le Cours</button>
+
+                <h4 style="margin-top: 20px;">Ajouter une Question QCM</h4>
+                <input type="text" id="new-q-text" placeholder="Intitulé de la question">
+                <input type="text" id="new-q-opt0" placeholder="Option A">
+                <input type="text" id="new-q-opt1" placeholder="Option B">
+                <input type="text" id="new-q-opt2" placeholder="Option C">
+                <label>Index de la bonne réponse (0 pour A, 1 pour B, 2 pour C) :</label>
+                <input type="number" id="new-q-answer" min="0" max="2" value="0">
+                <label>Niveau requis :</label>
+                <select id="new-q-level">
+                    <option value="1">Niveau 1 (Débutant / Recrue)</option>
+                    <option value="2">Niveau 2 (Intermédiaire / Chef d'équipe)</option>
+                    <option value="3">Niveau 3 (Avancé / Expert)</option>
+                </select>
+                <button onclick="addQuizQuestion()">Ajouter la Question</button>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // Structure de données globale
+    let appData = JSON.parse(localStorage.getItem('tactical_pro_full_data')) || {
+        courses: [
+            { id: 1, module: "TOPO", title: "Principes de Topographie (TTA 150)", content: "L'orientation sur le terrain s'appuie sur la carte et la boussole. Calcul d'azimut et lecture des courbes de niveau." },
+            { id: 2, module: "RDG", title: "Règlement de Discipline Générale", content: "Le respect de la hiérarchie et la cohésion sont les forces morales de l'arme." }
+        ],
+        quizzes: [
+            { id: 1, level: 1, q: "Quel est le document de référence pour le combat d'infanterie (Titre IV) ?", options: ["TTA 150", "Code de la route", "Manuel Civil"], answer: 0 },
+            { id: 2, level: 2, q: "Dans le calcul topographique, comment obtient-on l'Azimut Magnétique (AZM) ?", options: ["AZM = GT - DMR", "AZM = GT + DMR", "AZM = Distance x Vitesse"], answer: 0 },
+            { id: 3, level: 3, q: "Quelle est la procédure immédiate face à une menace IED ou engin suspect ?", options: ["La règle des 5C (Confirmer, Ĉumuler, Cordon, Contrôler, Compter)", "Courir vers l'avant", "Ignorer et continuer"], answer: 0 }
+        ]
+    };
+
+    let currentUser = JSON.parse(localStorage.getItem('tactical_pro_current_user')) || null;
+
+    function saveAppData() {
+        localStorage.setItem('tactical_pro_full_data', JSON.stringify(appData));
+    }
+
+    // Gestion de l'authentification
+    function registerUser() {
+        const grade = document.getElementById('user-grade').value;
+        const lastname = document.getElementById('user-lastname').value.trim();
+        const firstname = document.getElementById('user-firstname').value.trim();
+        const callsign = document.getElementById('user-callsign').value.trim();
+        const contact = document.getElementById('user-contact').value.trim();
+
+        if(!lastname || !firstname || !callsign) {
+            alert('Veuillez remplir au minimum votre nom, prénom et nom de guerre (indicatif).');
+            return;
+        }
+
+        currentUser = {
+            grade, lastname, firstname, callsign, contact,
+            score: 0,
+            level: 1
+        };
+        localStorage.setItem('tactical_pro_current_user', JSON.stringify(currentUser));
+        initAppInterface();
+    }
+
+    function logoutUser() {
+        if(confirm('Voulez-vous vous déconnecter de votre profil ?')) {
+            localStorage.removeItem('tactical_pro_current_user');
+            currentUser = null;
+            document.getElementById('auth-screen').classList.remove('hidden');
+            document.getElementById('main-app').classList.add('hidden');
+            document.getElementById('header-user-info').classList.add('hidden');
+        }
+    }
+
+    function initAppInterface() {
+        if(!currentUser) return;
+        document.getElementById('auth-screen').classList.add('hidden');
+        document.getElementById('main-app').classList.remove('hidden');
+        document.getElementById('header-user-info').classList.remove('hidden');
+
+        document.getElementById('display-grade').innerText = currentUser.grade;
+        document.getElementById('display-name').innerText = `${currentUser.lastname} ${currentUser.firstname}`;
+        document.getElementById('display-callsign').innerText = currentUser.callsign;
+        document.getElementById('nav-callsign').innerText = `📡 ${currentUser.callsign}`;
+        
+        updateUserStats();
+        loadCourses();
+        loadQuizLevels();
+    }
+
+    function updateUserStats() {
+        document.getElementById('display-score').innerText = currentUser.score;
+        let lvlTitle = "Niveau 1 : Recrue";
+        if(currentUser.level >= 2) lvlTitle = "Niveau 2 : Chef d'Équipe";
+        if(currentUser.level >= 3) lvlTitle = "Niveau 3 : Expert Tactique";
+        document.getElementById('display-level').innerText = lvlTitle;
+        localStorage.setItem('tactical_pro_current_user', JSON.stringify(currentUser));
+    }
+
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+        document.getElementById('tab-' + tabId).classList.remove('hidden');
+        event.currentTarget.classList.add('active');
+        if(tabId === 'topo' && window.map) {
+            window.map.invalidateSize();
+        }
+    }
+
+    function loadCourses() {
+        const container = document.getElementById('courses-list');
+        container.innerHTML = '';
+        appData.courses.forEach(c => {
+            container.innerHTML += `
+                <div style="background:#111a13; padding:12px; margin-top:8px; border-radius:5px; border-left: 3px solid var(--accent-green);">
+                    <small style="color:var(--accent-gold);">[Module : ${c.module}]</small>
+                    <h4 style="margin:5px 0;">${c.title}</h4>
+                    <p style="margin:0; font-size:0.9rem; color:#ccc;">${c.content}</p>
+                </div>
+            `;
+        });
+    }
+
+    function loadQuizLevels() {
+        const container = document.getElementById('qcm-container');
+        container.innerHTML = `
+            <p>Votre niveau actuel : <strong>Niveau ${currentUser.level}</strong></p>
+            <div style="display:flex; gap:10px; margin-bottom:15px;">
+                <button onclick="startQuiz(1)">Lancer Test Niveau 1</button>
+                <button onclick="startQuiz(2)" ${currentUser.level < 2 ? 'style="opacity:0.5;"' : ''}>Niveau 2 ${currentUser.level < 2 ? '🔒' : ''}</button>
+                <button onclick="startQuiz(3)" ${currentUser.level < 3 ? 'style="opacity:0.5;"' : ''}>Niveau 3 ${currentUser.level < 3 ? '🔒' : ''}</button>
+            </div>
+            <div id="active-quiz-box"></div>
+        `;
+    }
+
+    let currentQuizList = [];
+    let currentQuizIndex = 0;
+
+    function startQuiz(targetLevel) {
+        if(targetLevel > currentUser.level) {
+            alert(`🔒 Niveau verrouillé ! Vous devez accumuler plus de points au Niveau ${currentUser.level} pour progresser.`);
+            return;
+        }
+        currentQuizList = appData.quizzes.filter(q => q.level === targetLevel);
+        if(currentQuizList.length === 0) {
+            document.getElementById('active-quiz-box').innerHTML = `<p>Aucune question disponible pour ce niveau pour l'instant.</p>`;
+            return;
+        }
+        currentQuizIndex = 0;
+        renderQuestion();
+    }
+
+    function renderQuestion() {
+        const box = document.getElementById('active-quiz-box');
+        if(currentQuizIndex >= currentQuizList.length) {
+            box.innerHTML = `
+                <div style="background:#111a13; padding:15px; border-radius:6px; text-align:center;">
+                    <h4 style="color:var(--accent-gold);">🏁 Session Terminée !</h4>
+                    <p>Bon travail, ${currentUser.callsign}. Vos performances ont été enregistrées.</p>
+                    <button onclick="loadQuizLevels()">Recommencer / Changer de Niveau</button>
+                </div>
+            `;
+            return;
+        }
+        let q = currentQuizList[currentQuizIndex];
+        box.innerHTML = `
+            <div style="background:#111a13; padding:15px; border-radius:6px;">
+                <small>Question ${currentQuizIndex + 1} sur ${currentQuizList.length} (Niveau ${q.level})</small>
+                <p><strong>${q.q}</strong></p>
+                ${q.options.map((opt, i) => `<button style="display:block; width:100%; margin:8px 0; text-align:left;" onclick="submitAnswer(${i}, ${q.answer})">${String.fromCharCode(65 +)}. ${opt}</button>`).join('')}
+            </div>
+        `;
+    }
+
+    function submitAnswer(selected, correct) {
+        if(selected === correct) {
+            alert('✅ Bonne réponse ! +10 points.');
+            currentUser.score += 10;
+            // Progression automatique de niveau si le score atteint certains paliers
+            if(currentUser.score >= 30 && currentUser.level === 1) {
+                currentUser.level = 2;
+                alert('🎉 Félicitations ! Vous êtes promu au Niveau 2 (Chef d\'équipe).');
+            } else if(currentUser.score >= 60 && currentUser.level === 2) {
+                currentUser.level = 3;
+                alert('⭐ Félicitations ! Vous accédez au Niveau 3 (Expert Tactique).');
+            }
+        } else {
+            alert('❌ Mauvaise réponse. Révisez les doctrines et manuels associés.');
+        }
+        updateUserStats();
+        currentQuizIndex++;
+        renderQuestion();
+    }
+
+    // Administration
+    function addCourse() {
+        const title = document.getElementById('new-course-title').value;
+        const module = document.getElementById('new-course-module').value;
+        const content = document.getElementById('new-course-content').value;
+        if(!title || !content) { alert('Remplissez tous les champs.'); return; }
+        appData.courses.push({ id: Date.now(), module, title, content });
+        saveAppData();
+        loadCourses();
+        alert('Cours ajouté avec succès !');
+        document.getElementById('new-course-title').value = '';
+        document.getElementById('new-course-content').value = '';
+    }
+
+    function addQuizQuestion() {
+        const q = document.getElementById('new-q-text').value;
+        const opt0 = document.getElementById('new-q-opt0').value;
+        const opt1 = document.getElementById('new-q-opt1').value;
+        const opt2 = document.getElementById('new-q-opt2').value;
+        const answer = parseInt(document.getElementById('new-q-answer').value);
+        const level = parseInt(document.getElementById('new-q-level').value);
+
+        if(!q || !opt0 || !opt1) { alert('Remplissez la question et au moins deux options.'); return; }
+        appData.quizzes.push({ id: Date.now(), level, q, options: [opt0, opt1, opt2].filter(o => o !== ""), answer });
+        saveAppData();
+        alert('Question QCM ajoutée avec succès !');
+    }
+
+    // Calculateur Topographique
+    function calculateAzimut() {
+        const gt = parseFloat(document.getElementById('val-gt').value) || 0;
+        const dmr = parseFloat(document.getElementById('val-dmr').value) || 0;
+        const azm = gt - dmr;
+        document.getElementById('calc-result').innerText = `Azimut Magnétique (AZM) calculé : ${azm.toFixed(2)}`;
+    }
+
+    // Initialisation au chargement
+    window.onload = function() {
+        if(currentUser) {
+            initAppInterface();
+        }
+
+        // Carte Leaflet
+        window.map = L.map('map').setView([12.555, -12.174], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(window.map);
+
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(position => {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                document.getElementById('gps-coords').innerText = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+                window.map.setView([lat, lon], 15);
+                L.marker([lat, lon]).addTo(window.map).bindPopup("Position : " + (currentUser ? currentUser.callsign : "Recrue")).openPopup();
+            }, () => {
+                document.getElementById('gps-coords').innerText = "GPS non disponible.";
+            }, { enableHighAccuracy: true });
+        }
+    };
+</script>
+
+</body>
+</html>
